@@ -1,14 +1,11 @@
+#!/usr/bin/env python3
+
 #  # Developer: Vajira Thambawita
 #  # Last modified date: 18/07/2018
 #  # ##################################
 
 #  # Description ##################
-#  # pythroch resnet18 training
-
-
-
-
-
+#  # pytorch resnet18 training
 
 ###########################################
 
@@ -41,13 +38,13 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics import classification_report
 import itertools
 from multiprocessing import Process, freeze_support
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
 
 from tqdm import tqdm
 from torchsummary import summary
 from torch.autograd import Variable
 
-from dataset.Dataloader_with_path import ImageFolderWithPaths as dataset
+from dataloader_with_path import ImageFolderWithPaths as dataset
 
 
 #======================================
@@ -64,21 +61,24 @@ parser.add_argument("--py_file",default=os.path.abspath(__file__)) # store curre
 
 
 # Directories
-parser.add_argument("--data_train_folder", 
-                default="/work/vajira/DATA/kvasir_capsule/data/new_splits/split_0",
-                help="Train data folder")
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+DEFAULT_DATA_DIRECTORY = os.path.join(PROJECT_ROOT, 'data')
+
+parser.add_argument("--data_train_folder",
+                default=os.path.join(DEFAULT_DATA_DIRECTORY, 'train'),
+                help="Training data folder")
 
 parser.add_argument("--data_val_folder", 
-                default="/work/vajira/DATA/kvasir_capsule/data/new_splits/split_1",
+                default=os.path.join(DEFAULT_DATA_DIRECTORY, 'val'),
                 help="Validation data folder")
 
 parser.add_argument("--out_dir", 
-                default="/work/vajira/DATA/kvasir_capsule/output",
-                help="Main output dierectory")
+                default=os.path.join(DEFAULT_DATA_DIRECTORY, 'output'),
+                help="Main output directory")
 
-parser.add_argument("--tensorboard_dir", 
-                default="/work/vajira/DATA/kvasir_capsule/tensorboard",
-                help="Folder to save output of tensorboard")
+#parser.add_argument("--tensorboard_dir", 
+#                default=os.path.join(DEFAULT_DATA_DIRECTORY, 'tensorboard'),
+#                help="Folder to save output of tensorboard")
 
 # Hyper parameters
 parser.add_argument("--bs", type=int, default=32, help="Mini batch size")
@@ -105,7 +105,7 @@ opt = parser.parse_args()
 #==========================================
 # Device handling
 #==========================================
-torch.cuda.set_device(opt.device_id)
+#torch.cuda.set_device(opt.device_id)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 #===========================================
@@ -122,8 +122,8 @@ checkpoint_dir = os.path.join(opt.out_dir, py_file_name + "/checkpoints")
 os.makedirs(checkpoint_dir, exist_ok=True)
 
 # make tensorboard subdirectory for the experiment
-tensorboard_exp_dir = os.path.join(opt.tensorboard_dir, py_file_name)
-os.makedirs( tensorboard_exp_dir, exist_ok=True)
+#tensorboard_exp_dir = os.path.join(opt.tensorboard_dir, py_file_name)
+#os.makedirs( tensorboard_exp_dir, exist_ok=True)
 
 
 
@@ -131,7 +131,7 @@ os.makedirs( tensorboard_exp_dir, exist_ok=True)
 # Tensorboard
 #==========================================
 # Initialize summary writer
-writer = SummaryWriter(tensorboard_exp_dir)
+#writer = SummaryWriter(tensorboard_exp_dir)
 
 
 ###########################################################
@@ -145,7 +145,6 @@ writer = SummaryWriter(tensorboard_exp_dir)
 # Prepare Data
 #==========================================
 def prepare_data():
-
     data_transforms = {
         'train': transforms.Compose([
             transforms.Resize(256),
@@ -228,28 +227,22 @@ exit()
 #===========================================================
 
 def train_model(model, optimizer, criterion, dataloaders: dict, scheduler, best_acc=0.0, start_epoch = 0):
-
     best_model_wts = copy.deepcopy(model.state_dict())
-    
 
     for epoch in range(start_epoch , start_epoch + opt.num_epochs ):
-
-        for phase in ["train", "val"]:
-
-            if phase == "train":
+        print(f'Starting epoch {epoch}')
+        for phase in ('train', 'val'):
+            print(f'   phase: {phase}')
+            if phase == 'train':
                 model.train()
-                dataloader = dataloaders["train"]
             else:
                 model.eval()
-                dataloader = dataloaders["val"]
-            
+            dataloader = dataloaders[phase]
             
             running_loss = 0.0
             running_corrects = 0
 
-
             for i, data in enumerate(dataloader, 0):
-
                 inputs, labels, paths = data
                 inputs = inputs.to(device)
                 labels = labels.to(device)
@@ -279,8 +272,8 @@ def train_model(model, optimizer, criterion, dataloaders: dict, scheduler, best_
             epoch_acc = running_corrects.double() / dataloaders["dataset_size"][phase]
 
             # update tensorboard writer
-            writer.add_scalars("Loss", {phase:epoch_loss}, epoch)
-            writer.add_scalars("Accuracy" , {phase:epoch_acc}, epoch)
+            #writer.add_scalars("Loss", {phase:epoch_loss}, epoch)
+            #writer.add_scalars("Accuracy" , {phase:epoch_acc}, epoch)
 
              # update the lr based on the epoch loss
             if phase == "val": 
@@ -326,8 +319,9 @@ def prepare_model():
     model = models.densenet161(pretrained=True)
     num_ftrs = model.classifier.in_features
     model.classifier = nn.Linear(num_ftrs, 11)
-    model = model.to(device)
     
+    model = nn.DataParallel(model)
+    model = model.to(device)
     return model
 
 
@@ -368,11 +362,10 @@ def run_train(retrain=False):
         train_model(model,optimizer,criterion, dataloaders, scheduler, best_acc=0.0, start_epoch=0)
 
 
-#=====================================
-# Save models
-#=====================================
 def save_model(model_weights,  best_epoch,  best_epoch_loss, best_epoch_acc):
-   
+    """
+    Save models.
+    """
     check_point_name = py_file_name + "_epoch:{}_acc:{}.pt".format(best_epoch, best_epoch_acc) # get code file name and make a name
     check_point_path = os.path.join(checkpoint_dir, check_point_name)
     # save torch model
@@ -386,13 +379,10 @@ def save_model(model_weights,  best_epoch,  best_epoch_loss, best_epoch_acc):
     }, check_point_path)
 
 
-
-
-
-#=====================================
-# Check model
-#=====================================
 def check_model_graph():
+    """
+    Check model.
+    """
     model = prepare_model()
 
     summary(model, (3, 224, 224)) # this run on GPU
@@ -408,12 +398,11 @@ def check_model_graph():
     
     writer.add_graph(model, dummy_input) # this need the model on CPU
 
-#===============================================
-#  Model testing method
-#===============================================
 
 def test_model():
-    
+    """
+    Test model.
+    """
     test_model_checkpoint = opt.test_checkpoint #input("Please enter the path of test model:")
     checkpoint = torch.load(test_model_checkpoint)
 
@@ -705,8 +694,6 @@ def plot_confusion_matrix(cm, classes,
     print("Finished confusion matrix drawing...")
 
 
-
-
 if __name__ == '__main__':
     print("Started data preparation")
     data_loaders = prepare_data()
@@ -715,15 +702,15 @@ if __name__ == '__main__':
 
     # Train or retrain or inference
     if opt.action == "train":
-        print("Training process is strted..!")
+        print("Training process is started..!")
         run_train()
        # pass
     elif opt.action == "retrain":
-        print("Retrainning process is strted..!")
+        print("Retrainning process is started..!")
         run_train(retrain=True)
        # pass
     elif opt.action == "test":
-        print("Inference process is strted..!")
+        print("Inference process is started..!")
         test_model()
     elif opt.action == "check":
         check_model_graph()
@@ -733,4 +720,4 @@ if __name__ == '__main__':
         print("Probability file prepared..!")
 
     # Finish tensorboard writer
-    writer.close()
+    #writer.close()
