@@ -1,10 +1,5 @@
 import torch
 from torchvision import datasets
-# from dataset.Dataloader_with_path import ImageFolderWithPaths
-
-
-
-
 
 
 class ImageFolderWithPaths(datasets.ImageFolder):
@@ -23,7 +18,7 @@ class ImageFolderWithPaths(datasets.ImageFolder):
         return tuple_with_path
 
 
-if __name__=="__main__":
+if __name__ == '__main__':
 
     root_path = "/work/vajira/data/kvasir_new_23_class/data/split_0"
 
